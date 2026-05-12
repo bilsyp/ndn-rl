@@ -1,11 +1,12 @@
-
-
-
-# API Server
+numpy==2.4.4
+pandas==3.0.2
+matplotlib==3.10.9
+opencv-python==4.13.0.92
+gymnasium==1.2.3
+stable_baselines3==2.8.0
+torch==2.11.0
+torchvision==0.26.0
+tensorboard==2.20.0
+selenium==4.43.0
 fastapi==0.111.0
 uvicorn==0.30.1
-pydantic==2.7.1
-
-
-# Utilities
-httpx==0.27.0
