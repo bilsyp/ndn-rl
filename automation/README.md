@@ -1,5 +1,9 @@
 ### ---
 
+> [!NOTE]
+>
+> **Otomasi Penuh:** Seluruh proses pengujian dilakukan secara otomatis. Pemilihan skenario hingga interaksi dengan elemen web telah dikonfigurasi melalui skrip **Selenium**. Penguji tidak perlu melakukan interaksi manual tambahan pada browser agar tidak mengganggu jalannya eksperimen.
+
 **File: automation/README.md**
 
 # Automation Module
@@ -59,5 +63,16 @@ Eksperimen ini akan membandingkan performa dari tiga algoritma berikut:
 3. **Buffer-Based** (HTTP)
 
 ---
+
+---
+
+proses pengujian ini dilakukan secara automation / otomatis semua pemilihan , interaksi dengan web sudah diseeting pada script selenium jadi untuk penguji tidak perlu ada interaksi tambahan yang tidak relevan
+
+## 🛠️ Catatan Penting & Penanganan Masalah
+
+- **Verifikasi Output:** Setelah pengujian selesai, pastikan folder `logs/` telah terisi dengan data yang sesuai untuk memastikan eksperimen berjalan sempurna.
+- **Pelaporan Masalah:** Jika ditemukan _error_ atau _bug_ selama proses pengujian, harap catat detail kejadiannya dan laporkan melalui **GitHub Issues** pada repositori ini.
+- **Persyaratan Sistem:** Modul ini sangat bergantung pada keberadaan _binary_ **Mahimahi** di dalam _path_ sistem Anda.
+- **Izin Eksekusi:** Pastikan ada koneksi internet (untuk Selenium & Mahimahi) dan berikan izin eksekusi (_executable permission_) pada skrip sebelum dijalankan.
 
 **Peringatan:** Pastikan environment Mahimahi sudah terinstal dan terkonfigurasi dengan benar di sistem operasi (Linux direkomendasikan) sebelum menjalankan eksperimen.
