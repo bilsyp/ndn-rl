@@ -2,7 +2,8 @@ import sys
 import os
 import subprocess
 import numpy as np
-
+import shlex
+import glob
 # =========================
 # CONFIG
 # =========================
@@ -10,11 +11,17 @@ RUN_SCRIPT   = 'test-selenium-linux.py'
 RANDOM_SEED  = 42
 RUN_TIME     = 250          # detik per eksperimen
 MM_DELAY     = 40           # millisec — delay jaringan simulasi mahimahi
-MM_LINK      = '6mbps'     # kapasitas link mahimahi
+MM_LINK      = './scaled_traces/report_tram_0001.log'     # kapasitas link mahimahi
 ABR_ALGO     = ['NDN_RL (Named Data Networking)', 'Throughput-Based (HTTP)', 'Buffer-Based (HTTP)']
 REPEAT_TIME  = 2
-LOG_BASE_DIR = '../logs'
-TRACE_DIR    = './traces/report_tram_*.log'  # folder berisi file-file trace jaringan mahimahi
+LOG_BASE_DIR = './logs'
+# Folder sumber file trace jaringan Mahimahi
+# Jika diarahkan ke './scaled_traces', semua file di dalamnya akan dijalankan satu per satu
+TRACE_DIR = './scaled_traces'  
+
+# OPSIONAL: Jika mau fokus ke satu kategori (misal: tram saja), arahkan ke sub-foldernya.
+# Gunakan ini supaya eksperimen lebih cepat dan nggak perlu nunggu semua kategori selesai. Tapi harus salin sendiri
+# TRACE_DIR = './scaled_traces/tram'
 
 
 def main():
@@ -24,6 +31,9 @@ def main():
 
     # Ambil semua file trace dari folder
     trace_files = sorted(os.listdir(TRACE_DIR))
+    # Ambil list file yang sesuai pattern
+  #  trace_paths = sorted(glob.glob(TRACE_DIR)) 
+   # trace_files = [os.path.basename(p) for p in trace_paths]
     if not trace_files:
         print(f"[ERROR] Tidak ada file trace di {TRACE_DIR}")
         sys.exit(1)
@@ -45,13 +55,16 @@ def main():
                     os.makedirs(log_dir, exist_ok=True)
 
                     while True:
+                        safe_abr = shlex.quote(abr_algo)
+                        safe_trace = shlex.quote(trace_path)
+                        safe_log_dir = shlex.quote(log_dir)
                         # Mahimahi membungkus perintah selenium di dalam jaringan simulasi:
                         # mm-delay <delay_ms> mm-link <kapasitas> <trace_file> <perintah>
                         cmd = (
-                            f'mm-delay {MM_DELAY} '
-                            f'mm-link {MM_LINK} {trace_path} '
-                            f'{sys.executable} {RUN_SCRIPT} '
-                            f'"{abr_algo}" {RUN_TIME} {log_dir} {rt}'
+                        f'mm-delay {MM_DELAY} '
+                        f'mm-link {MM_LINK} {safe_trace} '
+                        f'{sys.executable} {RUN_SCRIPT} '
+                        f'{safe_abr} {RUN_TIME} {safe_log_dir} {rt}'
                         )
 
                         print(f"[run {rt}] [{trace_file}] Menjalankan {abr_algo} ...")

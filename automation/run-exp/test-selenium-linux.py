@@ -8,7 +8,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select, WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
-
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 # =================================================================
 # CONFIGURATION & CONSTANTS
 # =================================================================
@@ -86,7 +87,10 @@ class ABRExperiment:
         # Untuk Linux/Server (Opsional):
         # options.add_argument("--headless") 
 
-        self.driver = webdriver.Chrome(options=options)
+        self.driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=options
+	)
         print("[BROWSER] Chrome diluncurkan.")
 
     def run_simulation(self):
