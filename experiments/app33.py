@@ -391,7 +391,7 @@ class HybridStreamingEnvNDN(gym.Env):
         
         # Penalti Kepatuhan: Jika niat agen (target) ditolak oleh Veto (executed)
         # Ini mengajarkan agen untuk tidak 'meminta' hal yang membahayakan
-        penalty_veto = -1.5 if is_vetoed else 0.0
+        penalty_veto = -0.3 if is_vetoed else 0.0
 
         # TOTAL REWARD
         reward = reward_quality + reward_buffer + penalty_stalling + penalty_smoothness + penalty_veto
@@ -446,7 +446,7 @@ def make_env(rank, log_dir, seed=0):
     return _init
 # =============================================================================
 def run_experiment():
-    log_dir = "../logs/rl_logs_9bitrate/"
+    log_dir = "../logs/rl_logs_10bitrate/"
     os.makedirs(log_dir, exist_ok=True)
 
     tm = MahimahiTraceManager(folder_path="../traces_folder/mahimahi_traces")
@@ -491,8 +491,8 @@ def run_experiment():
     model.learn(total_timesteps=total_steps,
         progress_bar=True,
         tb_log_name="PPO_Parallel_1M_30Traces")
-    model.save("hybrid_4bitrate_ndn_model_v8")
-    print("✅ Pelatihan selesai. Model disimpan: hybrid_4bitrate_ndn_model_v5")
+    model.save("hybrid_4bitrate_ndn_model_v10")
+    print("✅ Pelatihan selesai. Model disimpan: hybrid_4bitrate_ndn_model_v10.zip")
 
     # ------------------------------------------------------------------
     # EVALUASI per trace file
@@ -628,4 +628,9 @@ def run_experiment():
 if __name__ == "__main__":
     run_experiment()
 
-    # model terlalu kaku  / terlalu takut untuk naik ke bitrate lebih tinggi karena takut kena veto, padahal sebenarnya jaringan cukup mendukung. Kita perlu memberikan lebih banyak pengalaman kepada agen untuk belajar bahwa beberapa risiko itu layak diambil demi reward jangka panjang yang lebih besar.
+#🏫 Analogi Praktis
+#Kondisi ini mirip seperti mobil otonom yang sudah berani menginjak pedal gas untuk melaju di kecepatan 100 km/jam (Agen RL), namun sistem rem darurat otomatis (Governor) terus aktif mengintervensi karena sensor membaca bahwa lebar jalanan fisik yang tersedia tidak mencukupi untuk melaju secepat itu dengan aman.
+
+#Melihat fakta bahwa Governor menahan agen demi menyelamatkan buffer dari kondisi stalling, langkah optimasi kita berikutnya adalah menyelaraskan sensitivitas sensor lingkungan ini.
+
+#Apakah Anda ingin kita melonggarkan batas toleransi kapasitas (SAFE_MARGIN) pada lingkungan agar agen lebih mudah lolos ke 720p, atau kita sesuaikan formula deteksi kemacetan (is_congested) agar tidak terlalu sensitif terhadap fluktuasi RTT?

@@ -316,7 +316,7 @@ class HybridStreamingEnvNDN(gym.Env):
                 # 1. Deteksi Kongesti (Causal Feedback)
                 # Kita gunakan RTT sebagai sinyal utama kemacetan antrean
                 rtt_increase_ratio = new_rtt / (prev_rtt + 1e-6)
-                is_congested = rtt_increase_ratio > 1.5 or new_cwnd < self.NDN_CONGESTION_CWND
+                is_congested = new_cwnd < self.NDN_CONGESTION_CWND
                 
                 # 2. Cek Kapasitas (Headroom)
                 # Kita cek apakah bitrate tujuan (target_idx) masuk akal dibanding mean_tp
@@ -391,7 +391,7 @@ class HybridStreamingEnvNDN(gym.Env):
         
         # Penalti Kepatuhan: Jika niat agen (target) ditolak oleh Veto (executed)
         # Ini mengajarkan agen untuk tidak 'meminta' hal yang membahayakan
-        penalty_veto = -1.5 if is_vetoed else 0.0
+        penalty_veto = -0.3 if is_vetoed else 0.0
 
         # TOTAL REWARD
         reward = reward_quality + reward_buffer + penalty_stalling + penalty_smoothness + penalty_veto
@@ -446,7 +446,7 @@ def make_env(rank, log_dir, seed=0):
     return _init
 # =============================================================================
 def run_experiment():
-    log_dir = "../logs/rl_logs_9bitrate/"
+    log_dir = "../logs/rl_logs_11bitrate/"
     os.makedirs(log_dir, exist_ok=True)
 
     tm = MahimahiTraceManager(folder_path="../traces_folder/mahimahi_traces")
@@ -491,8 +491,8 @@ def run_experiment():
     model.learn(total_timesteps=total_steps,
         progress_bar=True,
         tb_log_name="PPO_Parallel_1M_30Traces")
-    model.save("hybrid_4bitrate_ndn_model_v8")
-    print("✅ Pelatihan selesai. Model disimpan: hybrid_4bitrate_ndn_model_v5")
+    model.save("../models/hybrid_4bitrate_ndn_model_v11")
+    print("✅ Pelatihan selesai. Model disimpan: hybrid_4bitrate_ndn_model_v11.zip")
 
     # ------------------------------------------------------------------
     # EVALUASI per trace file
@@ -628,4 +628,4 @@ def run_experiment():
 if __name__ == "__main__":
     run_experiment()
 
-    # model terlalu kaku  / terlalu takut untuk naik ke bitrate lebih tinggi karena takut kena veto, padahal sebenarnya jaringan cukup mendukung. Kita perlu memberikan lebih banyak pengalaman kepada agen untuk belajar bahwa beberapa risiko itu layak diambil demi reward jangka panjang yang lebih besar.
+# menghapus rtt logic karena terlalu fluaktif untuk jangka pendek, dan tidak memberikan sinyal yang stabil untuk veto. Kita fokus pada throughput dan buffer saja untuk keputusan bitrate. dan cwnd kita buat lebih stabil dengan noise yang lebih kecil, agar agen bisa belajar pola yang lebih konsisten.
