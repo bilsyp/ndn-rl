@@ -143,19 +143,38 @@ class HybridStreamingEnvNDN(gym.Env):
         self.NDN_CONGESTION_CWND    = 3.0  # Threshold CWND kritis
 
     def _get_normalized_obs(self):
-        # KOREKSI: Pemotongan unpacking state dari 7 elemen menjadi 6 elemen
-        buffer, mean_tp, last_exec, _, volatility, cwnd = self.state
+        # Membongkar 6 dimensi state mentah
+        buffer, mean_tp, last_exec, trend, volatility, cwnd = self.state
 
-        norm_buffer = np.clip(buffer / 30.0, 0.0, 1.0)
-        norm_tp     = np.clip(mean_tp / SCALE_TARGET, 0.0, 1.0)  
-        norm_exec   = float(last_exec) / float(NUM_ACTIONS - 1)
+        # ------------------------------------------------------------------
+        # ⭐⭐⭐⭐⭐ BINTANG 5: norm_buffer (Sensitivitas Kuadratik / Eksponensial)
+        # ------------------------------------------------------------------
+        # Diubah dari linear menjadi kuadratik. Jika buffer turun sedikit saja,
+        # nilai normalisasinya akan terjun bebas, memaksa neural network waspada.
+        norm_buffer = np.clip((buffer / 30.0) ** 2, 0.0, 1.0)
 
-        safety      = max(0, buffer - self.LOW_BUFFER_THRESHOLD)
-        norm_safety = np.clip(safety / 20.0, 0.0, 1.0)
-        norm_vol    = np.clip(volatility, 0.0, 1.0)
-        norm_cwnd   = np.clip(cwnd / 100.0, 0.0, 1.0)
+        # ------------------------------------------------------------------
+        # ⭐⭐⭐⭐ BINTANG 4: norm_tp & norm_safety (Skala Sinyal Penuh [0.0 - 1.0])
+        # ------------------------------------------------------------------
+        norm_tp = np.clip(mean_tp / SCALE_TARGET, 0.0, 1.0)  
+        
+        # Perbaikan skala safety: Jarak dari batas aman (15s) menuju batas maksimal (30s) 
+        # adalah 15 detik. Dibagi 15.0 agar sinyal bergerak penuh dari 0.0 hingga 1.0.
+        safety = max(0, buffer - self.LOW_BUFFER_THRESHOLD)
+        norm_safety = np.clip(safety / 15.0, 0.0, 1.0)
 
-        # KOREKSI: Menghapus elemen norm_rtt dari kembalian array observasi
+        # ------------------------------------------------------------------
+        # ⭐⭐⭐ BINTANG 3: norm_vol (Modulator Risiko Kontinu)
+        # ------------------------------------------------------------------
+        norm_vol = np.clip(volatility, 0.0, 1.0)
+
+        # ------------------------------------------------------------------
+        # ⭐⭐ BINTANG 2: norm_cwnd & norm_exec (Latar Belakang Konten / Low-Impact)
+        # ------------------------------------------------------------------
+        norm_cwnd = np.clip(cwnd / 100.0, 0.0, 1.0)
+        norm_exec = float(last_exec) / float(NUM_ACTIONS - 1)
+
+        # Mengembalikan array 6 dimensi dengan urutan prioritas yang tajam
         return np.array(
             [norm_buffer, norm_tp, norm_exec, norm_safety, norm_vol, norm_cwnd],
             dtype=np.float32
@@ -365,7 +384,7 @@ class HybridStreamingEnvNDN(gym.Env):
                 "proactive_drain": penalty_proactive_drain,
                 "stall":   penalty_stalling,
                 "smooth":  penalty_smoothness,
-                "veto":    penalty_gate_break
+                "gate_break":    penalty_gate_break
             }
         }
         return self._get_normalized_obs(), reward, done, False, info
@@ -451,7 +470,7 @@ def run_experiment():
                 "R_Buffer":     rb.get("buffer", 0),
                 "R_Stall":      rb.get("stall", 0),
                 "R_Smooth":     rb.get("smooth", 0),
-                "R_Veto":       rb.get("veto", 0),
+                "R_Gate_Break": rb.get("gate_break", 0),
                 "Total_R":      rewards[0]
             })
             
@@ -502,7 +521,7 @@ def run_experiment():
         ax3.plot(df.index, df["R_Quality"], label="Quality Reward", color="dodgerblue", alpha=0.9)
         ax3.plot(df.index, df["R_Buffer"], label="Buffer Reward", color="orange", alpha=0.9)
         ax3.plot(df.index, df["R_Stall"], label="Stall Penalty", color="crimson", linewidth=2)
-        ax3.plot(df.index, df["R_Veto"], label="Veto Penalty", color="purple", linestyle="--")
+        ax3.plot(df.index, df["R_Gate_Break"], label="Gate Break Penalty", color="purple", linestyle="--")
         ax3.axhline(y=0, color="black", linewidth=1, alpha=0.7)
         ax3.set_ylabel("Reward Components", fontweight='bold')
         ax3.legend(loc="lower left", fontsize=8, ncol=2)
@@ -528,7 +547,7 @@ def run_experiment():
 if __name__ == "__main__":
     run_experiment()
 
-    # catatan:
+    # catatan: terdapat cacat logic pada 4 gate dan buffer logic panic dan stalling logic, perlu diperbaiki pada versi berikutnya.
 
 
     
