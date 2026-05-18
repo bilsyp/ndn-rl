@@ -10,6 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+
 # =================================================================
 # CONFIGURATION & CONSTANTS
 # =================================================================
@@ -62,8 +63,9 @@ class ABRExperiment:
         os._exit(1)
 
     def start_watchdog(self):
-        """Memulai timer pengawas di background."""
-        self.watchdog_timer = threading.Timer(self.max_runtime + 60, self._timeout_action) # +60s buffer
+        """Memulai timer pengawas di background dengan buffer aman."""
+        # Ditambah buffer 90 detik karena jaringan buruk bisa memperlambat pemuatan awal
+        self.watchdog_timer = threading.Timer(self.max_runtime + 90, self._timeout_action) 
         self.watchdog_timer.daemon = True
         self.watchdog_timer.start()
 
@@ -71,7 +73,7 @@ class ABRExperiment:
     # 3. BROWSER INTERACTION
     # ---------------------------------------------------------
     def launch_browser(self):
-        """Inisialisasi Chrome dengan opsi tertentu."""
+        """Inisialisasi Chrome dengan opsi stabilitas tinggi untuk Linux & Mahimahi."""
         options = webdriver.ChromeOptions()
         
         # Setting agar log otomatis terunduh ke direktori eksperimen
@@ -84,64 +86,84 @@ class ABRExperiment:
         options.add_argument(f"--user-data-dir={self.temp_profile_dir}")
         options.add_argument("--window-size=800,600")
         
-        # Untuk Linux/Server (Opsional):
-        # options.add_argument("--headless") 
+        # Flags krusial untuk mencegah Chrome crash di dalam sandbox Mahimahi / Linux Server
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
 
         self.driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
-        options=options
-	)
-        print("[BROWSER] Chrome diluncurkan.")
+            service=Service(ChromeDriverManager().install()),
+            options=options
+        )
+        print("[BROWSER] Chrome diluncurkan dengan konfigurasi stabilitas jaringan.")
 
     def run_simulation(self):
-        """Menjalankan alur eksperimen di web."""
+        """Menjalankan alur eksperimen di web dengan penanganan Explicit Wait."""
         try:
+            print(f"[BROWSER] Membuka URL: {URL}")
             self.driver.get(URL)
             
-            # Tunggu dropdown muncul (max 20 detik)
-            # wait = WebDriverWait(self.driver, 20)
-            time.sleep(10) # Delay Connection
-            select_element = self.driver.find_element(By.ID,"selectAbr")
+            # MENGGUNAKAN EXPLICIT WAIT (Maksimal tunggu 45 detik untuk koneksi lambat)
+            wait = WebDriverWait(self.driver, 45)
+            print("[WAIT] Menunggu elemen dropdown 'selectAbr' siap...")
+            select_element = wait.until(EC.presence_of_element_located((By.ID, "selectAbr")))
             
-            # Pilih Algoritma ABR
+            # Inisialisasi Dropdown Select
             abr_dropdown = Select(select_element)
-            abr_dropdown.select_by_visible_text(self.abr_name)
+            
+            # Fleksibel: Coba pilih berdasarkan VALUE dahulu (cepat), jika gagal gunakan TEXT paparan
+            try:
+                abr_dropdown.select_by_value(self.abr_name)
+                print(f"[SUCCESS] Berhasil memilih algoritma berdasarkan VALUE: {self.abr_name}")
+            except NoSuchElementException:
+                abr_dropdown.select_by_visible_text(self.abr_name)
+                print(f"[SUCCESS] Berhasil memilih algoritma berdasarkan TEXT: {self.abr_name}")
             
             print(f"[RUNNING] ABR: {self.abr_name} | Repeat: {self.repeat_idx}")
             print(f"[WAIT] Menunggu durasi eksperimen: {self.max_runtime} detik...")
             
-            # Tunggu hingga durasi video selesai
+            # Tunggu hingga durasi video selesai sesuai parameter
             time.sleep(self.max_runtime)
             
+            # Jeda toleransi tambahan 3 detik sebelum interaksi download log
+            time.sleep(3)
             return True
+            
+        except TimeoutException:
+            print("[ERROR] Timeout: Halaman/elemen web terlalu lama dimuat akibat jaringan lambat.")
+            return False
         except Exception as e:
             print(f"[ERROR] Terjadi kesalahan saat simulasi: {e}")
             return False
 
     def download_logs(self):
-        """Memicu klik tombol download di halaman web."""
+        """Memicu klik tombol download menggunakan Explicit Wait & pencocokan string fleksibel."""
         print("[INFO] Mengunduh log...")
         try:
-           # 1. Tentukan daftar tombol berdasarkan logika algoritma
-            if self.abr_name == "NDN_RL (Named Data Networking)":
+            # Menggunakan logika 'in' agar mendukung variasi nama "NDN_RL" maupun "NDN_RL (Named Data Networking)"
+            if "NDN_RL" in self.abr_name:
                 buttons = {
                     "Memo Log": "memo_download",
                     "Latency Log": "latency_download",
-                    "QoE Log": "qoe_download"  # Menambahkan qoe_download sesuai permintaan
+                    "QoE Log": "qoe_download"
                 }
             else:
-                # Untuk algoritma selain NDN_RL, hanya download QoE saja
                 buttons = {
                     "QoE Log": "qoe_download"
                 }
             
+            # Pastikan tombol benar-benar bisa diklik di browser sebelum dieksekusi
+            wait = WebDriverWait(self.driver, 20)
+            
             for name, btn_id in buttons.items():
-                btn = self.driver.find_element(By.ID, btn_id)
+                btn = wait.until(EC.element_to_be_clickable((By.ID, btn_id)))
                 btn.click()
-                print(f"  - {name} diklik.")
-                time.sleep(1.5) # Jeda singkat antar download
+                print(f"  - {name} berhasil diklik.")
+                time.sleep(2.0) # Jeda aman untuk proses download di jaringan lambat
                 
             print("[SUCCESS] Semua log telah diproses.")
+        except TimeoutException:
+            print("[ERROR] Tombol download tidak dapat diklik (Timeout).")
         except NoSuchElementException:
             print("[ERROR] Tombol download tidak ditemukan di halaman.")
         except Exception as e:
@@ -174,7 +196,6 @@ if __name__ == "__main__":
         print("Usage: python test-selenium.py <abr_name> <max_runtime> <log_dir> <repeat_index>")
         sys.exit(1)
 
-    # Inisialisasi Objek
     exp = ABRExperiment(
         abr_name=sys.argv[1],
         max_runtime=sys.argv[2],
@@ -189,7 +210,7 @@ if __name__ == "__main__":
         
         if exp.run_simulation():
             exp.download_logs()
-            print("done") # Sinyal untuk script orchestrator
+            print("done") # Sinyal sukses untuk script orchestrator
             
     finally:
         exp.cleanup()

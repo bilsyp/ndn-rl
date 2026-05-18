@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from stable_baselines3 import PPO
 
 # --- KONFIGURASI ---
-MODEL_PATH = "hybrid_4bitrate_ndn_model_v4.zip"  # Pastikan path ini benar sesuai dengan lokasi model Anda
+MODEL_PATH = "../models/hybrid_14bitrate_ndn_model_v15.zip"  # Pastikan path ini benar sesuai dengan lokasi model Anda
 
 app = FastAPI(title="NDN-RL Pure Inference Server")
 
@@ -60,4 +60,4 @@ async def predict(metrics: PredictionRequest):
         return {"bitrate_index": 0, "status": f"ERROR: {str(e)}"}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("ndn-rl-inference-server:app", host="0.0.0.0", port=8000, workers=2)
