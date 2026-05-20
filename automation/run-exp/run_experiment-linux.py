@@ -51,21 +51,30 @@ def main():
                 for trace_file in trace_files:
                     trace_path = os.path.join(TRACE_DIR, trace_file)
 
-                    # Subfolder log per kombinasi algo + trace + repeat
-                    log_dir = os.path.join(LOG_BASE_DIR, f'{abr_algo}_run{rt}_{trace_file}')
-                    os.makedirs(log_dir, exist_ok=True)
+                    # [CHANGED] Subfolder hanya dibuat untuk NDN_RL (butuh memo + latency log)
+                    # Untuk algo lain, log_dir tetap dikirim tapi folder tidak dibuat di sini
+                    if 'NDN_RL' in abr_algo:
+                        log_dir = os.path.join(LOG_BASE_DIR, f'{abr_algo}_run{rt}_{trace_file}')
+                        os.makedirs(log_dir, exist_ok=True)
+                    else:
+                        # Algo non-NDN_RL tidak butuh folder — log_dir diset ke LOG_BASE_DIR
+                        # worker hanya akan menulis ke file akumulasi QoE
+                        log_dir = LOG_BASE_DIR
 
                     while True:
-                        safe_abr = shlex.quote(abr_algo)
+                        safe_abr   = shlex.quote(abr_algo)
                         safe_trace = shlex.quote(trace_path)
                         safe_log_dir = shlex.quote(log_dir)
-                        
+                        # [CHANGED] Kirim trace_file sebagai argumen ke-6 agar worker bisa
+                        # membentuk label akumulasi QoE: "<abr>_run<rt>_<trace_file> : <avg>"
+                        safe_trace_file = shlex.quote(trace_file)
+
                         # Menyusun perintah komando untuk emulasi jaringan Mahimahi
                         cmd = (
                             f'mm-delay {MM_DELAY} '
                             f'mm-link {MM_LINK} {safe_trace} '
                             f'{sys.executable} {RUN_SCRIPT} '
-                            f'{safe_abr} {RUN_TIME} {safe_log_dir} {rt}'
+                            f'{safe_abr} {RUN_TIME} {safe_log_dir} {rt} {safe_trace_file}'
                         )
 
                         print(f"[run {rt}] [{trace_file}] Menjalankan {abr_algo} ...")
