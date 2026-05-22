@@ -9,7 +9,7 @@ import numpy as np
 RUN_SCRIPT   = 'test-selenium-windows.py'
 RANDOM_SEED  = 42
 RUN_TIME     = 250          # detik per eksperimen
-ABR_ALGO     = ['NDN_RL (Named Data Networking)', 'Throughput-Based (HTTP)', 'Buffer-Based (HTTP)']
+ABR_ALGO     = ['RL (HTTP)','NDN_RL (Named Data Networking)', 'Throughput-Based (HTTP)', 'Buffer-Based (HTTP)']
 REPEAT_TIME  = 2
 LOG_BASE_DIR = '../logs'     # folder log utama; subfolder dibuat otomatis per run
 
