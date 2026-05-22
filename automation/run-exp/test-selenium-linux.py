@@ -116,6 +116,7 @@ class ABRExperiment:
 
             wait = WebDriverWait(self.driver, 45)
             print("[WAIT] Menunggu elemen dropdown 'selectAbr' siap...")
+            time.sleep(10)
             select_element = wait.until(EC.presence_of_element_located((By.ID, "selectAbr")))
 
             abr_dropdown = Select(select_element)
@@ -162,7 +163,7 @@ class ABRExperiment:
                 btn = wait.until(EC.element_to_be_clickable((By.ID, btn_id)))
                 btn.click()
                 print(f"  - {name} berhasil diklik.")
-                time.sleep(2.0)
+                time.sleep(5)
 
             print("[SUCCESS] Semua log telah diproses.")
 
