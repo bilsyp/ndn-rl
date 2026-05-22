@@ -108,7 +108,7 @@ class MahimahiTraceManager:
         self.ptr = random.randint(0, max(0, len(self.active_trace["data"]) - 110))
         return self.active_trace["name"]
 
-    def set_trace_index(self, idx):
+     def set_trace_index(self, idx):
         self.active_trace = self.traces[idx % len(self.traces)]
         self.ptr = 0
         return self.active_trace["name"]
