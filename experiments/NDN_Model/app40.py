@@ -12,7 +12,7 @@ from collections import deque
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.utils import set_random_seed
-import torch
+
 # =============================================================================
 # ARSITEKTUR BERSIH (BASE MODEL PRODUKSI — BEBAS RTT NOISE)
 # 1. Observation Space dioptimalkan dari 7 Dimensi menjadi 6 Dimensi.
@@ -393,7 +393,7 @@ class HybridStreamingEnvNDN(gym.Env):
 
 def make_env(rank, log_dir, seed=0):
     def _init():
-        tm = MahimahiTraceManager(folder_path="../../traces_folder/mahimahi_traces/train_traces")
+        tm = MahimahiTraceManager(folder_path="../../traces_folder/mahimahi_traces/full_traces")
         env = HybridStreamingEnvNDN(tm)
         monitor_path = os.path.join(log_dir, str(rank))
         env = Monitor(env, monitor_path)
@@ -402,15 +402,21 @@ def make_env(rank, log_dir, seed=0):
 
 
 def run_experiment():
-    log_dir = "../../logs/rl_logs_17bitrate/"
+    log_dir = "../../logs/rl_logs_18bitrate/"
     os.makedirs(log_dir, exist_ok=True)
 
-    tm = MahimahiTraceManager(folder_path="../../traces_folder/mahimahi_traces/train_traces")
-    if not tm.traces:
+    # Cek ketersediaan trace (pastikan menggunakan argumen split dan seed)
+    tm_check = MahimahiTraceManager(
+        folder_path="../../traces_folder/mahimahi_traces/full_traces", 
+        split="train", seed=42
+    )
+    if not tm_check.traces:
+        print("❌ Tidak ada trace yang ditemukan!")
         return
 
     num_cpu = 4
-    total_steps = 1000000
+    total_steps = 500000
+    # Pastikan make_env di atas fungsi ini sudah memuat split="train"
     env = SubprocVecEnv([make_env(i, log_dir) for i in range(num_cpu)])
 
     print("=" * 60)
@@ -433,135 +439,37 @@ def run_experiment():
         clip_range=0.2,         
         tensorboard_log=log_dir
     )
-        # 2. Ambil policy network (PyTorch Module)
-    onnx_model = model.policy
-    onnx_model.eval()
-    model.learn(total_timesteps=total_steps, progress_bar=True, tb_log_name="PPO_Parallel_1M_30Traces")
-    input_dim = model.observation_space.shape
-    dummy_input = torch.randn(1, *input_dim) 
+    
+    # 1. EKSEKUSI TRAINING
+    print("\n🚀 Memulai proses training...")
+    model.learn(total_timesteps=total_steps)
+    model.save(os.path.join(log_dir, "ppo_hybrid_ndn_model"))
+    print("✅ Training selesai dan model disimpan.")
 
-    # 4. Export langsung ke ONNX
-    torch.onnx.export(
-        onnx_model,
-        dummy_input,
-        "../../models/hybrid_4bitrate_ndn_model_v17.onnx",
-        opset_version=12,
-        input_names=['observation'],
-        output_names=['action']
+    # 2. EKSEKUSI EVALUASI (Sekuensial agar plot tidak tercampur)
+    print("\n=======================================================")
+    print("📈 EVALUASI PASCA-TRAINING")
+    print("=======================================================")
+    
+    # Evaluasi pada TRAINING SET
+    tm_train = MahimahiTraceManager(
+        folder_path="../../traces_folder/mahimahi_traces/full_traces",
+        split="train", test_size=8, seed=42
     )
-    # model.save("../../models/hybrid_4bitrate_ndn_model_v16")
-    print("✅ Pelatihan selesai. Model disimpan: hybrid_4bitrate_ndn_model_v17")
-
-    print("\n📊 Memulai Evaluasi Akhir...")
-    env.close()
-
-    eval_env = DummyVecEnv([lambda: HybridStreamingEnvNDN(tm)])
+    # Tanpa DummyVecEnv, langsung panggil environment dasar
+    eval_env_train = HybridStreamingEnvNDN(tm_train) 
+    evaluate_and_plot(model, eval_env_train, tm_train, "train", log_dir)
     
-    res_names = ["240p", "360p", "480p", "720p"]
-    res_colors = ["#3498db", "#2ecc71", "#f1c40f", "#e74c3c"] 
-    
-    for i in range(len(tm.traces)):
-        obs = eval_env.reset() 
-        eval_env.envs[0].reset(options={"trace_idx": i})
-        
-        trace_name = tm.traces[i]["name"]
-        history = []
-        
-        for _ in range(120): 
-            action, _ = model.predict(obs, deterministic=True)
-            obs, rewards, dones, infos = eval_env.step(action)
-            
-            info_step = infos[0]
-            rb = info_step.get("reward_breakdown", {})
-            
-            history.append({
-                "TP":           info_step.get("raw_tp", 0),
-                "Volatility":   info_step.get("volatility", 0),
-                "Buffer":       info_step.get("buffer", 0),
-                "Bitrate":      info_step.get("bitrate", 0),
-                "Stalling":     info_step.get("stalling", 0),
-                "Vetoed":       info_step.get("is_vetoed", False),
-                "R_Quality":    rb.get("quality", 0),
-                "R_Buffer":     rb.get("buffer", 0),
-                "R_Stall":      rb.get("stall", 0),
-                "R_Smooth":     rb.get("smooth", 0),
-                "R_Gate_Break": rb.get("gate_break", 0),
-                "Total_R":      rewards[0]
-            })
-            
-            if dones[0]:
-                break
-                
-        df = pd.DataFrame(history)
-        fig, axes = plt.subplots(4, 1, figsize=(14, 18), sharex=True, 
-                               gridspec_kw={'height_ratios': [1.5, 1, 1, 1]})
-
-        # 1. PANEL 1: THROUGHPUT VS BITRATE
-        ax1 = axes[0]
-        ax1.plot(df.index, df["TP"], label="Actual Bandwidth", color="steelblue", alpha=0.4, linewidth=1.5)
-        ax1.step(df.index, df["Bitrate"], label="Executed Bitrate", color="black", linewidth=2.5, where="post", zorder=10)
-
-        for br, label, col in zip(eval_env.envs[0].bitrates, res_names, res_colors):
-            ax1.axhline(y=br, linestyle="--", linewidth=1.2, alpha=0.6, color=col, zorder=1)
-            ax1.text(df.index[-1] * 1.01, br, f"{label}\n({br}M)", fontsize=9, color=col, fontweight='bold', va='center')
-
-        veto_mask = df["Vetoed"] == True
-        if veto_mask.any():
-            ax1.scatter(df.index[veto_mask], df["Bitrate"][veto_mask] + 0.15, 
-                        color="darkred", marker="x", s=60, label="Veto (Safety Filter)", zorder=11)
-
-        ax1.set_ylabel("Throughput / Bitrate (Mbps)", fontweight='bold')
-        ax1.set_title(f"Performance Analysis (Refactored): {trace_name}", fontsize=16, fontweight='bold', pad=20)
-        ax1.legend(loc="upper left", bbox_to_anchor=(0, 1.12), ncol=3, frameon=False)
-        ax1.grid(axis='x', alpha=0.2)
-
-        # 2. PANEL 2: BUFFER & STALLING
-        ax2 = axes[1]
-        ax2.fill_between(df.index, df["Buffer"], color="forestgreen", alpha=0.15)
-        ax2.plot(df.index, df["Buffer"], color="forestgreen", linewidth=2, label="Buffer Level")
-        ax2.axhline(y=15.0, color="orange", linestyle="--", linewidth=1.5, label="Safe Threshold (15s)")
-        ax2.axhline(y=5.0, color="red", linestyle="-.", linewidth=1.5, label="Panic Threshold (5s)")
-
-        stall_mask = df["Stalling"] > 0
-        if stall_mask.any():
-            for idx in df.index[stall_mask]:
-                ax2.axvspan(idx-0.5, idx+0.5, color='red', alpha=0.3, label='Stalling' if idx == df.index[stall_mask][0] else "")
-
-        ax2.set_ylabel("Buffer (seconds)", fontweight='bold')
-        ax2.set_ylim(0, 35)
-        ax2.legend(loc="upper left", fontsize=9)
-
-        # 3. PANEL 3: REWARD COMPONENTS
-        ax3 = axes[2]
-        ax3.plot(df.index, df["R_Quality"], label="Quality Reward", color="dodgerblue", alpha=0.9)
-        ax3.plot(df.index, df["R_Buffer"], label="Buffer Reward", color="orange", alpha=0.9)
-        ax3.plot(df.index, df["R_Stall"], label="Stall Penalty", color="crimson", linewidth=2)
-        ax3.plot(df.index, df["R_Gate_Break"], label="Gate Break Penalty", color="purple", linestyle="--")
-        ax3.axhline(y=0, color="black", linewidth=1, alpha=0.7)
-        ax3.set_ylabel("Reward Components", fontweight='bold')
-        ax3.legend(loc="lower left", fontsize=8, ncol=2)
-
-        # 4. PANEL 4: VOLATILITY & TOTAL REWARD
-        ax4 = axes[3]
-        ax4_t = ax4.twinx()
-        p1, = ax4.plot(df.index, df["Volatility"], color="darkmagenta", linewidth=1.5, label="Network Volatility")
-        p2, = ax4_t.plot(df.index, df["Total_R"], color="royalblue", linewidth=1.5, label="Total Step Reward")
-        
-        ax4.set_ylabel("Volatility (CV)", color="darkmagenta", fontweight='bold')
-        ax4_t.set_ylabel("Total Reward", color="royalblue", fontweight='bold')
-        ax4.set_xlabel("Segment Index", fontweight='bold')
-        ax4.legend(handles=[p1, p2], loc="upper left", fontsize=9)
-
-        plt.tight_layout()
-        out_path = os.path.join(log_dir, f"eval_v4_clean_{trace_name}.png")
-        plt.savefig(out_path, dpi=130)
-        plt.close()
-        print(f"   ✅ Plot Analitik Bersih disimpan: {out_path}")
-
+    # Evaluasi pada TESTING SET
+    tm_test = MahimahiTraceManager(
+        folder_path="../../traces_folder/mahimahi_traces/full_traces",
+        split="test", test_size=8, seed=42
+    )
+    eval_env_test = HybridStreamingEnvNDN(tm_test)
+    evaluate_and_plot(model, eval_env_test, tm_test, "test", log_dir)
 
 if __name__ == "__main__":
     run_experiment()
-
     # catatan: pada versi ini agent telah berhasil untuk adaptasi yang lebih stabil dan tidak terlalu agresif dalam memilih bitrate tinggi saat kondisi jaringan tidak mendukung, berkat adanya mekanisme veto yang lebih ketat dan reward yang lebih seimbang. Evaluasi menunjukkan bahwa agent mampu menjaga buffer pada level yang aman sambil tetap memanfaatkan bandwidth yang tersedia secara efisien.
 
 

@@ -42,7 +42,7 @@ current_path = Path(__file__).resolve()
 ROOT_DIR = next(p for p in current_path.parents if p.name == "membuat-model")
 
 # Sekarang kamu tinggal gabungkan ke folder tujuan
-MODEL_PATH = ROOT_DIR / "models" / "http_baseline_4bitrate_model_v1"
+MODEL_PATH = ROOT_DIR / "models" / "ppov2_hybrid_ndn_model"
 
 
 OUTPUT_FOLDER = ROOT_DIR / "models" / "model-onnx"
@@ -51,7 +51,7 @@ OUTPUT_FOLDER = ROOT_DIR / "models" / "model-onnx"
 OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
 
 # 3. Tentukan nama file ONNX-nya
-OUTPUT_PATH = OUTPUT_FOLDER / "http_baseline_4bitrate_model_v1.onnx"
+OUTPUT_PATH = OUTPUT_FOLDER / "ppov2_hybrid_ndn_model.onnx"
 # =============================================================================
 # WRAPPER: Ambil HANYA bagian Actor dari ActorCriticPolicy
 # =============================================================================
@@ -218,7 +218,7 @@ def inference_example():
             0.33,   # norm_exec        (aksi terakhir = indeks 1 dari 3)
             0.40,   # norm_safety      (buffer_safety moderat)
             0.15,   # norm_volatility  (jaringan cukup stabil)
-            # 0.60,   # norm_cwnd        (CWND ~30.6 dari headroom NDN)
+            0.60,   # norm_cwnd        (CWND ~30.6 dari headroom NDN)
         ]], dtype=np.float32)
 
         logits = sess.run(None, {"observation": obs_ndn})[0]
@@ -242,7 +242,7 @@ if __name__ == "__main__":
     export_ppo_to_onnx(
         model_path=MODEL_PATH,   # tanpa .zip
         output_path=OUTPUT_PATH,
-        obs_dim=5,
+        obs_dim=6,
     )
 
     # # --- Export Model HTTP Baseline (5 dimensi, tanpa CWND) ---
