@@ -51,16 +51,9 @@ def main():
                 for trace_file in trace_files:
                     trace_path = os.path.join(TRACE_DIR, trace_file)
 
-                    # [CHANGED] Subfolder hanya dibuat untuk NDN_RL (butuh memo + latency log)
-                    # Untuk algo lain, log_dir tetap dikirim tapi folder tidak dibuat di sini
-                    if 'NDN_RL' in abr_algo:
-                        log_dir = os.path.join(LOG_BASE_DIR, f'{abr_algo}_run{rt}_{trace_file}')
-                        os.makedirs(log_dir, exist_ok=True)
-                    else:
-                        # Algo non-NDN_RL tidak butuh folder — log_dir diset ke LOG_BASE_DIR
-                        # worker hanya akan menulis ke file akumulasi QoE
-                        log_dir = LOG_BASE_DIR
-
+        
+                    log_dir = os.path.join(LOG_BASE_DIR, f'{abr_algo}_run{rt}_{trace_file}')
+                    os.makedirs(log_dir, exist_ok=True)
                     while True:
                         safe_abr   = shlex.quote(abr_algo)
                         safe_trace = shlex.quote(trace_path)

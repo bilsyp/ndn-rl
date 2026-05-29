@@ -42,7 +42,7 @@ current_path = Path(__file__).resolve()
 ROOT_DIR = next(p for p in current_path.parents if p.name == "membuat-model")
 
 # Sekarang kamu tinggal gabungkan ke folder tujuan
-MODEL_PATH = ROOT_DIR / "models" / "ppov2_hybrid_ndn_model"
+MODEL_PATH = ROOT_DIR / "models" / "hybrid_14bitrate_ndn_model_v15"
 
 
 OUTPUT_FOLDER = ROOT_DIR / "models" / "model-onnx"
@@ -51,7 +51,7 @@ OUTPUT_FOLDER = ROOT_DIR / "models" / "model-onnx"
 OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
 
 # 3. Tentukan nama file ONNX-nya
-OUTPUT_PATH = OUTPUT_FOLDER / "ppov2_hybrid_ndn_model.onnx"
+OUTPUT_PATH = OUTPUT_FOLDER / "hybrid_14bitrate_ndn_model_v15.onnx"
 # =============================================================================
 # WRAPPER: Ambil HANYA bagian Actor dari ActorCriticPolicy
 # =============================================================================

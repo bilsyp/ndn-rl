@@ -158,6 +158,7 @@ class ABRExperiment:
                 }
 
             wait = WebDriverWait(self.driver, 20)
+            time.sleep(5)
 
             for name, btn_id in buttons.items():
                 btn = wait.until(EC.element_to_be_clickable((By.ID, btn_id)))
@@ -181,47 +182,30 @@ class ABRExperiment:
     # [NEW] 4. QoE PROCESSING & ACCUMULATION
     # ---------------------------------------------------------
     def _process_qoe(self):
-        """
-        Cari file QoE yang baru didownload, hitung rata-rata,
-        lalu tambahkan ke file akumulasi per algoritma di LOG_BASE_DIR.
-
-        Format baris hasil:
-          NDN_RL (Named Data Networking)_run0_report_bicycle_0001.log : -3.08
-        """
-        # Cari file CSV QoE di log_dir — pola: *qoe*.csv
-        qoe_files = glob.glob(os.path.join(self.log_dir, '*qoe*.csv'))
+        qoe_files = glob.glob(os.path.join(self.log_dir, 'QoE_Report_*.csv'))
 
         if not qoe_files:
             print("[QoE WARN] Tidak ada file QoE ditemukan, lewati perhitungan.")
             return
 
-        # Ambil file terbaru jika ada lebih dari satu
         qoe_file = max(qoe_files, key=os.path.getmtime)
-        print(f"[QoE] Menghitung rata-rata dari: {os.path.basename(qoe_file)}")
-
         avg_qoe = calculate_avg_qoe_pandas(qoe_file)
         if avg_qoe is None:
-            print("[QoE WARN] Perhitungan QoE gagal, baris tidak ditambahkan.")
             return
 
-        # [NEW] Bentuk label sesuai format yang diinginkan
-        # Contoh: "NDN_RL (Named Data Networking)_run0_report_bicycle_0001.log"
         label = f"{self.abr_name}_run{self.repeat_idx}_{self.trace_file}"
-
-        # [NEW] Nama file akumulasi per algoritma di root ./logs/
-        # Karakter "/" dan spasi di nama algo diganti agar aman sebagai nama file
         safe_algo_name = self.abr_name.replace('/', '-').replace(' ', '_')
-        # LOG_BASE_DIR = direktori induk dari self.log_dir (./logs/)
-        logs_root = os.path.dirname(self.log_dir) if "NDN_RL" in self.abr_name else self.log_dir
+
+        # ✅ FIX: Selalu simpan ke root logs (naik satu level dari log_dir)
+        logs_root = os.path.dirname(self.log_dir)
+        os.makedirs(logs_root, exist_ok=True)  # pastikan folder ada
+
         accum_file = os.path.join(logs_root, f'{safe_algo_name}_qoe_results.txt')
 
-        # Tambahkan baris ke file akumulasi (append)
         with open(accum_file, 'a') as f:
             f.write(f"{label} : {avg_qoe:.2f}\n")
 
         print(f"[QoE] Hasil disimpan → {accum_file}")
-        print(f"[QoE] {label} : {avg_qoe:.2f}")
-
     # ---------------------------------------------------------
     # 5. CLEANUP
     # ---------------------------------------------------------

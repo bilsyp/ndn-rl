@@ -14,7 +14,7 @@ ROOT_DIR = next(p for p in current_path.parents if p.name == "membuat-model")
 
 # Diarahkan langsung ke file .onnx hasil ekspor kemarin
 # Catatan: Pastikan file .onnx.data berada di folder yang sama dengan file .onnx ini!
-MODEL_PATH = ROOT_DIR / "models" / "model-onnx" / "hybrid_4bitrate_ndn_model_v16.onnx"
+MODEL_PATH = ROOT_DIR / "models" / "model-onnx" / "hybrid_14bitrate_ndn_model_v15.onnx"
 
 # --- CONFIGURASI FASTAPI ---
 app = FastAPI(title="NDN-RL Pure ONNX Inference Server")
