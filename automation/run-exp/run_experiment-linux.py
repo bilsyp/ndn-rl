@@ -1,3 +1,4 @@
+
 import sys
 import os
 import subprocess
@@ -7,19 +8,19 @@ import shlex
 # =========================
 # CONFIG
 # =========================
-RUN_SCRIPT   = 'test-selenium-linux.py'
+RUN_SCRIPT   = 'test-play.py'
 RANDOM_SEED  = 42
 RUN_TIME     = 250          # detik per eksperimen
 MM_DELAY     = 40           # millisec — delay jaringan simulasi mahimahi
-MM_LINK      = 12     # kapasitas link mahimahi
+MM_LINK      = "./test_traces/report_car_0003.log"     # kapasitas link mahimahi
 
 # Menggunakan singkatan 'NDN_RL' untuk kestabilan string parsing di Mahimahi Shell
-ABR_ALGO     = ['RL (HTTP)','NDN_RL', 'Throughput-Based (HTTP)', 'Buffer-Based (HTTP)']
+ABR_ALGO     = ['NDN_RL', 'Throughput-Based (HTTP)', 'Buffer-Based (HTTP)']
 REPEAT_TIME  = 1
 LOG_BASE_DIR = './logs'
 
 # Folder sumber file trace jaringan Mahimahi
-TRACE_DIR = './scaled_traces'  
+TRACE_DIR = './test_traces'  
 
 def main():
     np.random.seed(RANDOM_SEED)

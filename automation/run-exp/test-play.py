@@ -1,23 +1,16 @@
+
 import os
 import sys
 import time
-import shutil
 import threading
 import glob
 import pandas as pd
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import Select, WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 # =================================================================
 # CONFIGURATION & CONSTANTS
 # =================================================================
-URL = "https://ndn-memoization-video-client.vercel.app/"
-DEFAULT_CHROME_TEMPLATE = './abr_browser_dir/chrome_data_dir'
+URL = "http://192.168.1.14:3000"
 
 # =================================================================
 # QoE CALCULATION
@@ -35,40 +28,28 @@ def calculate_avg_qoe_pandas(file_path):
         print(f"[QoE ERROR] Gagal menghitung QoE dari {file_path}: {e}")
         return None
 
+
 class ABRExperiment:
     def __init__(self, abr_name, max_runtime, log_dir, repeat_idx, trace_file):
         self.abr_name    = abr_name
         self.max_runtime = int(max_runtime)
         self.log_dir     = os.path.abspath(log_dir)
         self.repeat_idx  = repeat_idx
-        self.trace_file  = trace_file      # [NEW] nama file trace untuk label akumulasi
-        self.pid         = str(os.getpid())
+        self.trace_file  = trace_file
 
-        # Path profil sementara (kompatibel Windows/Linux)
-        self.temp_profile_dir = os.path.join(
-            os.environ.get('TMPDIR', '/tmp'),
-            f'chrome_user_dir_id_{self.pid}'
-        )
-
-        self.driver        = None
+        self._pw            = None
+        self.browser        = None
+        self.context        = None
+        self.page           = None
         self.watchdog_timer = None
 
     # ---------------------------------------------------------
     # 1. ENVIRONMENT SETUP
     # ---------------------------------------------------------
     def prepare_environment(self):
-        """Menyiapkan folder log dan menyalin profil Chrome bersih."""
+        """Menyiapkan folder log. Profil temp tidak diperlukan di Playwright."""
         os.makedirs(self.log_dir, exist_ok=True)
-
-        if os.path.exists(self.temp_profile_dir):
-            shutil.rmtree(self.temp_profile_dir, ignore_errors=True)
-
-        if os.path.exists(DEFAULT_CHROME_TEMPLATE):
-            shutil.copytree(DEFAULT_CHROME_TEMPLATE, self.temp_profile_dir)
-            print(f"[SETUP] Profil disalin ke: {self.temp_profile_dir}")
-        else:
-            os.makedirs(self.temp_profile_dir, exist_ok=True)
-            print("[WARN] Template profil tidak ada, menggunakan profil kosong.")
+        print(f"[SETUP] Folder log siap: {self.log_dir}")
 
     # ---------------------------------------------------------
     # 2. WATCHDOG TIMER (Timeout Handler)
@@ -87,45 +68,43 @@ class ABRExperiment:
     # 3. BROWSER INTERACTION
     # ---------------------------------------------------------
     def launch_browser(self):
-        """Inisialisasi Chrome dengan opsi stabilitas tinggi untuk Linux & Mahimahi."""
-        options = webdriver.ChromeOptions()
+        """Inisialisasi Chromium via Playwright untuk Linux & Mahimahi."""
+        self._pw = sync_playwright().start()
 
-        prefs = {
-            "download.default_directory": self.log_dir,
-            "download.prompt_for_download": False,
-            "profile.default_content_setting_values.automatic_downloads": 1
-        }
-        options.add_experimental_option("prefs", prefs)
-        options.add_argument(f"--user-data-dir={self.temp_profile_dir}")
-        options.add_argument("--window-size=800,600")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-
-        self.driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()),
-            options=options
+        self.browser = self._pw.chromium.launch(
+            headless=False,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ]
         )
-        print("[BROWSER] Chrome diluncurkan dengan konfigurasi stabilitas jaringan.")
+
+        # Context menggantikan profil Chrome — isolasi per-run, support download
+        self.context = self.browser.new_context(
+            accept_downloads=True,
+            viewport={"width": 800, "height": 600},
+        )
+
+        self.page = self.context.new_page()
+        print("[BROWSER] Chromium (Playwright) diluncurkan.")
 
     def run_simulation(self):
-        """Menjalankan alur eksperimen di web dengan penanganan Explicit Wait."""
+        """Menjalankan alur eksperimen di web."""
         try:
             print(f"[BROWSER] Membuka URL: {URL}")
-            self.driver.get(URL)
-
-            wait = WebDriverWait(self.driver, 45)
-            print("[WAIT] Menunggu elemen dropdown 'selectAbr' siap...")
+            self.page.goto(URL, timeout=60_000)
             time.sleep(10)
-            select_element = wait.until(EC.presence_of_element_located((By.ID, "selectAbr")))
 
-            abr_dropdown = Select(select_element)
+            print("[WAIT] Menunggu elemen dropdown 'selectAbr' siap...")
+            # Playwright auto-wait — tidak perlu time.sleep(10)
+            self.page.wait_for_selector("#selectAbr", timeout=45_000)
 
             try:
-                abr_dropdown.select_by_value(self.abr_name)
+                self.page.select_option("#selectAbr", value=self.abr_name)
                 print(f"[SUCCESS] Berhasil memilih algoritma berdasarkan VALUE: {self.abr_name}")
-            except NoSuchElementException:
-                abr_dropdown.select_by_visible_text(self.abr_name)
+            except Exception:
+                self.page.select_option("#selectAbr", label=self.abr_name)
                 print(f"[SUCCESS] Berhasil memilih algoritma berdasarkan TEXT: {self.abr_name}")
 
             print(f"[RUNNING] ABR: {self.abr_name} | Repeat: {self.repeat_idx}")
@@ -135,7 +114,7 @@ class ABRExperiment:
             time.sleep(3)
             return True
 
-        except TimeoutException:
+        except PlaywrightTimeout:
             print("[ERROR] Timeout: Halaman/elemen web terlalu lama dimuat akibat jaringan lambat.")
             return False
         except Exception as e:
@@ -143,43 +122,40 @@ class ABRExperiment:
             return False
 
     def download_logs(self):
-        """Memicu klik tombol download, lalu hitung QoE dan akumulasi hasilnya."""
+        """Memicu klik tombol download, simpan file, lalu hitung QoE."""
         print("[INFO] Mengunduh log...")
         try:
             if "NDN_RL" in self.abr_name:
                 buttons = {
                     "Memo Log":    "memo_download",
                     "Latency Log": "latency_download",
-                    "QoE Log":     "qoe_download"
+                    "QoE Log":     "qoe_download",
                 }
             else:
                 buttons = {
-                    "QoE Log": "qoe_download"
+                    "QoE Log": "qoe_download",
                 }
 
-            wait = WebDriverWait(self.driver, 20)
-            time.sleep(5)
-
             for name, btn_id in buttons.items():
-                btn = wait.until(EC.element_to_be_clickable((By.ID, btn_id)))
-                btn.click()
-                print(f"  - {name} berhasil diklik.")
-                time.sleep(5)
+                # expect_download() menangkap event download — tidak perlu sleep
+                with self.page.expect_download(timeout=20_000) as dl_info:
+                    self.page.click(f"#{btn_id}", timeout=20_000)
+
+                download = dl_info.value
+                dest = os.path.join(self.log_dir, download.suggested_filename)
+                download.save_as(dest)
+                print(f"  - {name} tersimpan: {dest}")
 
             print("[SUCCESS] Semua log telah diproses.")
-
-            # [NEW] Setelah download selesai, cari file QoE dan hitung rata-ratanya
             self._process_qoe()
 
-        except TimeoutException:
+        except PlaywrightTimeout:
             print("[ERROR] Tombol download tidak dapat diklik (Timeout).")
-        except NoSuchElementException:
-            print("[ERROR] Tombol download tidak ditemukan di halaman.")
         except Exception as e:
             print(f"[ERROR] Gagal mengunduh log: {e}")
 
     # ---------------------------------------------------------
-    # [NEW] 4. QoE PROCESSING & ACCUMULATION
+    # 4. QoE PROCESSING & ACCUMULATION
     # ---------------------------------------------------------
     def _process_qoe(self):
         qoe_files = glob.glob(os.path.join(self.log_dir, 'QoE_Report_*.csv'))
@@ -196,9 +172,8 @@ class ABRExperiment:
         label = f"{self.abr_name}_run{self.repeat_idx}_{self.trace_file}"
         safe_algo_name = self.abr_name.replace('/', '-').replace(' ', '_')
 
-        # ✅ FIX: Selalu simpan ke root logs (naik satu level dari log_dir)
         logs_root = os.path.dirname(self.log_dir)
-        os.makedirs(logs_root, exist_ok=True)  # pastikan folder ada
+        os.makedirs(logs_root, exist_ok=True)
 
         accum_file = os.path.join(logs_root, f'{safe_algo_name}_qoe_results.txt')
 
@@ -206,32 +181,33 @@ class ABRExperiment:
             f.write(f"{label} : {avg_qoe:.2f}\n")
 
         print(f"[QoE] Hasil disimpan → {accum_file}")
+
     # ---------------------------------------------------------
     # 5. CLEANUP
     # ---------------------------------------------------------
     def cleanup(self):
-        """Membersihkan resource (driver, timer, profil sementara)."""
+        """Membersihkan resource (page, context, browser, playwright, timer)."""
         if self.watchdog_timer:
             self.watchdog_timer.cancel()
 
-        if self.driver:
-            try:
-                self.driver.quit()
-                print("[CLEANUP] Browser ditutup.")
-            except:
-                pass
+        try:
+            if self.context:
+                self.context.close()
+            if self.browser:
+                self.browser.close()
+            if self._pw:
+                self._pw.stop()
+            print("[CLEANUP] Browser ditutup.")
+        except Exception:
+            pass
 
-        if os.path.exists(self.temp_profile_dir):
-            shutil.rmtree(self.temp_profile_dir, ignore_errors=True)
-            print(f"[CLEANUP] Profil sementara dihapus.")
 
 # =================================================================
 # MAIN EXECUTION
 # =================================================================
 if __name__ == "__main__":
-    # [CHANGED] Argumen ke-6 (trace_file) sekarang wajib
     if len(sys.argv) < 6:
-        print("Usage: python test-selenium-linux.py <abr_name> <max_runtime> <log_dir> <repeat_index> <trace_file>")
+        print("Usage: python test-playwright-linux.py <abr_name> <max_runtime> <log_dir> <repeat_index> <trace_file>")
         sys.exit(1)
 
     exp = ABRExperiment(
@@ -239,7 +215,7 @@ if __name__ == "__main__":
         max_runtime = sys.argv[2],
         log_dir     = sys.argv[3],
         repeat_idx  = sys.argv[4],
-        trace_file  = sys.argv[5],   # [NEW]
+        trace_file  = sys.argv[5],
     )
 
     try:
@@ -249,7 +225,7 @@ if __name__ == "__main__":
 
         if exp.run_simulation():
             exp.download_logs()
-            print("done")  # Sinyal sukses untuk script orchestrator
+            print("done")
 
     finally:
         exp.cleanup()
